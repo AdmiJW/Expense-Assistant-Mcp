@@ -10,6 +10,8 @@ import { register as registerDeleteExpense } from './tools/delete-expense.js';
 import { register as registerAddAttachment } from './tools/add-attachment.js';
 import { register as registerRemoveAttachment } from './tools/remove-attachment.js';
 import { register as registerExpenseSummary } from './tools/expense-summary.js';
+import { register as registerBulkAddExpenses } from './tools/bulk-add-expenses.js';
+import { register as registerBulkDeleteExpenses } from './tools/bulk-delete-expenses.js';
 import { register as registerListCategories } from './tools/list-categories.js';
 
 const db = initDatabase();
@@ -28,6 +30,8 @@ registerDeleteExpense(server, db);
 registerAddAttachment(server, db);
 registerRemoveAttachment(server, db);
 registerExpenseSummary(server, db);
+registerBulkAddExpenses(server, db);
+registerBulkDeleteExpenses(server, db);
 registerListCategories(server);
 
 // Connect via stdio

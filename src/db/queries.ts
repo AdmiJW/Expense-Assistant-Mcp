@@ -166,6 +166,60 @@ export function deleteExpense(
     return { deleted: result.changes > 0, attachmentPaths }
 }
 
+// --- Bulk Operations ---
+
+export function bulkInsertExpenses(
+    db: Database.Database,
+    records: Array<{
+        amount: number
+        category: string
+        description: string
+        date?: string
+        sub_category?: string
+        remark?: string
+    }>,
+): Expense[] {
+    // Single transaction: all inserts commit together or none do.
+    const run = db.transaction((items: typeof records) => {
+        return items.map((item) => insertExpense(db, item))
+    })
+    return run(records)
+}
+
+export function bulkDeleteExpenses(
+    db: Database.Database,
+    ids: string[],
+): { deleted_ids: string[]; not_found_ids: string[]; attachmentPaths: string[] } {
+    const run = db.transaction((targetIds: string[]) => {
+        const deleted_ids: string[] = []
+        const not_found_ids: string[] = []
+        const attachmentPaths: string[] = []
+
+        for (const id of targetIds) {
+            // Pre-fetch paths before DELETE — cascade wipes attachment rows immediately.
+            const atts = db
+                .prepare(
+                    "SELECT file_path FROM expense_attachments WHERE expense_id = ?",
+                )
+                .all(id) as { file_path: string }[]
+            attachmentPaths.push(...atts.map((a) => a.file_path))
+
+            const result = db
+                .prepare("DELETE FROM expenses WHERE id = ?")
+                .run(id)
+            if (result.changes > 0) {
+                deleted_ids.push(id)
+            } else {
+                // ID not found — remove the paths we just collected for it (none were added)
+                not_found_ids.push(id)
+            }
+        }
+
+        return { deleted_ids, not_found_ids, attachmentPaths }
+    })
+    return run(ids)
+}
+
 // --- Image Attachments ---
 
 export function insertAttachment(

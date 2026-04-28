@@ -54,6 +54,14 @@ export const DeleteExpenseSchema = z.object({
     id: z.string().min(1),
 })
 
+export const BulkAddExpenseSchema = z.object({
+    expenses: z.array(AddExpenseSchema).min(1).max(100),
+})
+
+export const BulkDeleteExpenseSchema = z.object({
+    ids: z.array(z.string().min(1)).min(1).max(100),
+})
+
 export const AddAttachmentSchema = z.object({
     expense_id: z.string().min(1),
     file_path: z.string().min(1),

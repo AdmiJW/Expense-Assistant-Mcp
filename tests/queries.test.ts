@@ -10,6 +10,8 @@ import {
     getAttachmentById,
     deleteAttachment,
     getExpenseSummary,
+    bulkInsertExpenses,
+    bulkDeleteExpenses,
 } from "../src/db/queries.js"
 import { createTestDb } from "./helpers/db.js"
 import { seedExpense, seedAttachment } from "./helpers/fixtures.js"
@@ -387,5 +389,161 @@ describe("getExpenseSummary", () => {
         const summary = getExpenseSummary(db, START, END, "day")
         expect(summary.period.start).toBe(START)
         expect(summary.period.end).toBe(END)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// bulkInsertExpenses
+// ---------------------------------------------------------------------------
+describe("bulkInsertExpenses", () => {
+    let db: Database.Database
+    beforeEach(() => { db = createTestDb() })
+
+    it("inserts all records and returns them in input order", () => {
+        const results = bulkInsertExpenses(db, [
+            { amount: 10, category: "食物", description: "Roti canai" },
+            { amount: 20, category: "交通", description: "Grab ride" },
+            { amount: 5.5, category: "饮料", description: "Teh tarik" },
+        ])
+
+        expect(results).toHaveLength(3)
+        expect(results[0].description).toBe("Roti canai")
+        expect(results[1].description).toBe("Grab ride")
+        expect(results[2].description).toBe("Teh tarik")
+    })
+
+    it("persists all records to the database", () => {
+        const results = bulkInsertExpenses(db, [
+            { amount: 10, category: "食物", description: "A" },
+            { amount: 20, category: "饮料", description: "B" },
+        ])
+
+        for (const r of results) {
+            const fetched = getExpenseById(db, r.id)
+            expect(fetched).not.toBeNull()
+            expect(fetched!.id).toBe(r.id)
+        }
+    })
+
+    it("returns correct count matching the input array length", () => {
+        const results = bulkInsertExpenses(db, [
+            { amount: 1, category: "食物", description: "X" },
+            { amount: 2, category: "食物", description: "Y" },
+            { amount: 3, category: "食物", description: "Z" },
+        ])
+        expect(results.length).toBe(3)
+    })
+
+    it("respects optional fields — sub_category and remark default to null", () => {
+        const [result] = bulkInsertExpenses(db, [
+            { amount: 5, category: "其他", description: "Misc" },
+        ])
+        expect(result.sub_category).toBeNull()
+        expect(result.remark).toBeNull()
+    })
+
+    it("persists explicit date when provided", () => {
+        const date = "2025-03-01T10:00:00.000Z"
+        const [result] = bulkInsertExpenses(db, [
+            { amount: 5, category: "食物", description: "Test", date },
+        ])
+        expect(result.date).toBe(date)
+    })
+
+    it("each returned record has a unique id", () => {
+        const results = bulkInsertExpenses(db, [
+            { amount: 1, category: "食物", description: "A" },
+            { amount: 2, category: "食物", description: "B" },
+            { amount: 3, category: "食物", description: "C" },
+        ])
+        const ids = results.map((r) => r.id)
+        expect(new Set(ids).size).toBe(3)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// bulkDeleteExpenses
+// ---------------------------------------------------------------------------
+describe("bulkDeleteExpenses", () => {
+    let db: Database.Database
+    beforeEach(() => { db = createTestDb() })
+
+    it("deletes all specified IDs and reports them in deleted_ids", () => {
+        const a = seedExpense(db)
+        const b = seedExpense(db)
+        const c = seedExpense(db)
+
+        const result = bulkDeleteExpenses(db, [a.id, b.id, c.id])
+
+        expect(result.deleted_ids).toHaveLength(3)
+        expect(result.deleted_ids).toContain(a.id)
+        expect(result.deleted_ids).toContain(b.id)
+        expect(result.deleted_ids).toContain(c.id)
+        expect(result.not_found_ids).toHaveLength(0)
+    })
+
+    it("records are actually gone from the database after deletion", () => {
+        const a = seedExpense(db)
+        const b = seedExpense(db)
+
+        bulkDeleteExpenses(db, [a.id, b.id])
+
+        expect(getExpenseById(db, a.id)).toBeNull()
+        expect(getExpenseById(db, b.id)).toBeNull()
+    })
+
+    it("reports non-existent IDs in not_found_ids without affecting valid deletes", () => {
+        const a = seedExpense(db)
+
+        const result = bulkDeleteExpenses(db, [a.id, "ghost-1", "ghost-2"])
+
+        expect(result.deleted_ids).toEqual([a.id])
+        expect(result.not_found_ids).toContain("ghost-1")
+        expect(result.not_found_ids).toContain("ghost-2")
+        expect(getExpenseById(db, a.id)).toBeNull()
+    })
+
+    it("collects attachment file_paths from all deleted expenses", () => {
+        const a = seedExpense(db)
+        const b = seedExpense(db)
+        seedAttachment(db, a.id, { file_path: "attachments/a1.jpg" })
+        seedAttachment(db, a.id, { file_path: "attachments/a2.pdf" })
+        seedAttachment(db, b.id, { file_path: "attachments/b1.jpg" })
+
+        const result = bulkDeleteExpenses(db, [a.id, b.id])
+
+        expect(result.attachmentPaths).toHaveLength(3)
+        expect(result.attachmentPaths).toContain("attachments/a1.jpg")
+        expect(result.attachmentPaths).toContain("attachments/a2.pdf")
+        expect(result.attachmentPaths).toContain("attachments/b1.jpg")
+    })
+
+    it("cascade removes all attachment rows from the DB", () => {
+        const expense = seedExpense(db)
+        const att1 = seedAttachment(db, expense.id)
+        const att2 = seedAttachment(db, expense.id)
+
+        bulkDeleteExpenses(db, [expense.id])
+
+        expect(getAttachmentById(db, att1.id)).toBeNull()
+        expect(getAttachmentById(db, att2.id)).toBeNull()
+    })
+
+    it("returns empty deleted_ids when all IDs are not found", () => {
+        const result = bulkDeleteExpenses(db, ["ghost-1", "ghost-2"])
+
+        expect(result.deleted_ids).toHaveLength(0)
+        expect(result.not_found_ids).toHaveLength(2)
+        expect(result.attachmentPaths).toHaveLength(0)
+    })
+
+    it("duplicate IDs: first delete succeeds, second is treated as not_found", () => {
+        const expense = seedExpense(db)
+
+        const result = bulkDeleteExpenses(db, [expense.id, expense.id])
+
+        expect(result.deleted_ids).toHaveLength(1)
+        expect(result.not_found_ids).toHaveLength(1)
+        expect(result.not_found_ids[0]).toBe(expense.id)
     })
 })

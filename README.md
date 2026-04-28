@@ -31,6 +31,7 @@ Expense Assistant MCP Server (Node.js + TypeScript)
 ```
 
 **Key design decisions:**
+
 - **Fixed categories** — prevents the AI from inventing ad-hoc category names that break aggregations.
 - **File-path-based attachments** — the agent downloads a file (e.g. from Telegram), passes the absolute OS path to MCP; MCP copies it internally. No base64 over the wire.
 - **Relative paths in DB** — `file_path` stored as `attachments/uuid.ext` relative to the data dir, so the entire `data/` folder can be relocated via `EXPENSE_DATA_DIR` without breaking references.
@@ -57,15 +58,15 @@ Add to your `claude_desktop_config.json`:
 
 ```json
 {
-  "mcpServers": {
-    "expense-assistant": {
-      "command": "node",
-      "args": ["/absolute/path/to/Expense-Assistant-Mcp/dist/index.js"],
-      "env": {
-        "EXPENSE_DATA_DIR": "/absolute/path/to/data"
-      }
+    "mcpServers": {
+        "expense-assistant": {
+            "command": "node",
+            "args": ["/absolute/path/to/Expense-Assistant-Mcp/dist/index.js"],
+            "env": {
+                "EXPENSE_DATA_DIR": "/absolute/path/to/data"
+            }
+        }
     }
-  }
 }
 ```
 
@@ -81,11 +82,12 @@ node dist/index.js
 
 ## Configuration
 
-| Environment Variable | Default | Description |
-|---|---|---|
-| `EXPENSE_DATA_DIR` | `<project root>/data` | Absolute path for SQLite DB and attachment files. Set this to a persistent volume in production. |
+| Environment Variable | Default               | Description                                                                                      |
+| -------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| `EXPENSE_DATA_DIR`   | `<project root>/data` | Absolute path for SQLite DB and attachment files. Set this to a persistent volume in production. |
 
 The data directory is created automatically on first run. It contains:
+
 ```
 data/
   expenses.db          # SQLite database
@@ -103,10 +105,22 @@ Returns the canonical list of valid category values. **Call this before `add_exp
 **Parameters:** none
 
 **Returns:**
+
 ```json
 {
-  "categories": ["食物", "饮料", "交通", "购物", "娱乐", "居家", "数码用品", "医疗", "旅行", "其他"],
-  "note": "当类别为'其他'时，请提供 sub_category 字段说明具体类别。"
+    "categories": [
+        "食物",
+        "饮料",
+        "交通",
+        "购物",
+        "娱乐",
+        "居家",
+        "数码用品",
+        "医疗",
+        "旅行",
+        "其他"
+    ],
+    "note": "当类别为'其他'时，请提供 sub_category 字段说明具体类别。"
 }
 ```
 
@@ -116,24 +130,49 @@ Returns the canonical list of valid category values. **Call this before `add_exp
 
 Records a new expense.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `amount` | `number` | ✅ | Positive value in MYR |
-| `category` | `string` | ✅ | Must match a value from `list_categories` |
-| `description` | `string` | ✅ | Short description of the expense |
-| `date` | `string` (ISO 8601 UTC) | — | Defaults to now (Malaysia UTC+8) |
-| `sub_category` | `string` | ✅ if `其他` | Required when category is `其他` |
-| `remark` | `string` | — | Additional notes |
+| Parameter      | Type                    | Required     | Description                               |
+| -------------- | ----------------------- | ------------ | ----------------------------------------- |
+| `amount`       | `number`                | ✅           | Positive value in MYR                     |
+| `category`     | `string`                | ✅           | Must match a value from `list_categories` |
+| `description`  | `string`                | ✅           | Short description of the expense          |
+| `date`         | `string` (ISO 8601 UTC) | —            | Defaults to now (Malaysia UTC+8)          |
+| `sub_category` | `string`                | ✅ if `其他` | Required when category is `其他`          |
+| `remark`       | `string`                | —            | Additional notes                          |
 
 **Returns:** Full `Expense` object including generated `id`.
 
 **Example:**
+
 ```json
 {
-  "amount": 12.5,
-  "category": "食物",
-  "description": "Char kway teow",
-  "date": "2025-01-15T12:30:00.000Z"
+    "amount": 12.5,
+    "category": "食物",
+    "description": "Char kway teow",
+    "date": "2025-01-15T12:30:00.000Z"
+}
+```
+
+---
+
+### `bulk_add_expenses`
+
+Inserts multiple expense records in a single atomic transaction. Use this instead of calling `add_expense` in a loop when you have several items to record at once — saves token count and round-trips.
+
+| Parameter  | Type        | Required | Description                                                   |
+| ---------- | ----------- | -------- | ------------------------------------------------------------- |
+| `expenses` | `Expense[]` | ✅       | Array of 1–100 expense objects (same schema as `add_expense`) |
+
+Each item in `expenses` follows the same rules as `add_expense`: `amount`, `category`, `description` are required; `date`, `sub_category`, `remark` are optional.
+
+**Atomicity:** all records are validated before any insert begins. A validation failure on any single item rejects the entire batch — no partial inserts.
+
+**Returns:**
+
+```json
+{
+  "count": 3,
+  "expenses": [...],
+  "warnings": ["Record 1: category '其他' provided without sub_category"]
 }
 ```
 
@@ -143,9 +182,9 @@ Records a new expense.
 
 Retrieves a single expense by its UUID, including all attached files.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | `string` | ✅ | UUID of the expense |
+| Parameter | Type     | Required | Description         |
+| --------- | -------- | -------- | ------------------- |
+| `id`      | `string` | ✅       | UUID of the expense |
 
 **Returns:** `ExpenseWithAttachments`. Each attachment's `file_path` is an **absolute OS path** ready to pass to Telegram's `sendDocument` API.
 
@@ -157,15 +196,16 @@ Retrieves a single expense by its UUID, including all attached files.
 
 Queries the expense ledger with optional filters and pagination.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `start_date` | `string` (ISO 8601 UTC) | — | Filter from this date (inclusive) |
-| `end_date` | `string` (ISO 8601 UTC) | — | Filter until this date (inclusive) |
-| `category` | `string` | — | Filter by exact category name |
-| `limit` | `number` | — | Max records per page (default 20, max 100) |
-| `offset` | `number` | — | Skip this many records (default 0) |
+| Parameter    | Type                    | Required | Description                                |
+| ------------ | ----------------------- | -------- | ------------------------------------------ |
+| `start_date` | `string` (ISO 8601 UTC) | —        | Filter from this date (inclusive)          |
+| `end_date`   | `string` (ISO 8601 UTC) | —        | Filter until this date (inclusive)         |
+| `category`   | `string`                | —        | Filter by exact category name              |
+| `limit`      | `number`                | —        | Max records per page (default 20, max 100) |
+| `offset`     | `number`                | —        | Skip this many records (default 0)         |
 
 **Returns:**
+
 ```json
 {
   "expenses": [...],
@@ -183,15 +223,15 @@ Queries the expense ledger with optional filters and pagination.
 
 Partially updates an existing expense. Only pass the fields you want to change.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | `string` | ✅ | UUID of the expense |
-| `amount` | `number` | — | New amount |
-| `category` | `string` | — | New category |
-| `description` | `string` | — | New description |
-| `date` | `string` (ISO 8601 UTC) | — | New date |
-| `sub_category` | `string \| null` | — | Pass `null` to clear |
-| `remark` | `string \| null` | — | Pass `null` to clear |
+| Parameter      | Type                    | Required | Description          |
+| -------------- | ----------------------- | -------- | -------------------- |
+| `id`           | `string`                | ✅       | UUID of the expense  |
+| `amount`       | `number`                | —        | New amount           |
+| `category`     | `string`                | —        | New category         |
+| `description`  | `string`                | —        | New description      |
+| `date`         | `string` (ISO 8601 UTC) | —        | New date             |
+| `sub_category` | `string \| null`        | —        | Pass `null` to clear |
+| `remark`       | `string \| null`        | —        | Pass `null` to clear |
 
 **Returns:** Updated `Expense` object, or an error if the id does not exist.
 
@@ -201,11 +241,34 @@ Partially updates an existing expense. Only pass the fields you want to change.
 
 Permanently removes an expense and all its attachments — both the DB rows and the physical files on disk. **Irreversible.**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | `string` | ✅ | UUID of the expense |
+| Parameter | Type     | Required | Description         |
+| --------- | -------- | -------- | ------------------- |
+| `id`      | `string` | ✅       | UUID of the expense |
 
 **Returns:** Confirmation string including how many attachment files were deleted.
+
+---
+
+### `bulk_delete_expenses`
+
+Permanently deletes multiple expense records and all their attachments (DB rows + physical files) in a single atomic transaction. Use this instead of calling `delete_expense` in a loop.
+
+| Parameter | Type       | Required | Description                            |
+| --------- | ---------- | -------- | -------------------------------------- |
+| `ids`     | `string[]` | ✅       | Array of 1–100 expense UUIDs to delete |
+
+IDs that do not exist are silently skipped and reported in `not_found_ids` — the remaining valid IDs are still deleted. **Irreversible.**
+
+**Returns:**
+
+```json
+{
+    "deleted_count": 3,
+    "not_found_count": 1,
+    "not_found_ids": ["ghost-uuid"],
+    "attachments_removed": 5
+}
+```
 
 ---
 
@@ -213,13 +276,13 @@ Permanently removes an expense and all its attachments — both the DB rows and 
 
 Copies a file into the MCP data store and links it to an expense.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `expense_id` | `string` | ✅ | UUID of the target expense (must exist) |
-| `file_path` | `string` | ✅ | **Absolute OS path** to the source file |
-| `original_filename` | `string` | ✅ | Display name for the file |
-| `mime_type` | `string` | — | MIME type (default: `application/octet-stream`) |
-| `remark` | `string` | — | Optional note about the attachment |
+| Parameter           | Type     | Required | Description                                     |
+| ------------------- | -------- | -------- | ----------------------------------------------- |
+| `expense_id`        | `string` | ✅       | UUID of the target expense (must exist)         |
+| `file_path`         | `string` | ✅       | **Absolute OS path** to the source file         |
+| `original_filename` | `string` | ✅       | Display name for the file                       |
+| `mime_type`         | `string` | —        | MIME type (default: `application/octet-stream`) |
+| `remark`            | `string` | —        | Optional note about the attachment              |
 
 The source file is **copied** — the original is not moved or deleted. Typical flow: Telegram bot downloads the file → passes its temp path here.
 
@@ -231,9 +294,9 @@ The source file is **copied** — the original is not moved or deleted. Typical 
 
 Deletes a single attachment — both the DB record and the physical file.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | `string` | ✅ | UUID of the attachment |
+| Parameter | Type     | Required | Description            |
+| --------- | -------- | -------- | ---------------------- |
+| `id`      | `string` | ✅       | UUID of the attachment |
 
 Does not affect the parent expense or other attachments. **Returns error** if the id does not exist.
 
@@ -243,24 +306,23 @@ Does not affect the parent expense or other attachments. **Returns error** if th
 
 Generates an aggregated financial report for a date range.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `start_date` | `string` (ISO 8601 UTC) | ✅ | Range start (inclusive) |
-| `end_date` | `string` (ISO 8601 UTC) | ✅ | Range end (inclusive) |
-| `group_by` | `"day" \| "week" \| "month" \| "year"` | — | Time-series granularity (default: `"day"`) |
+| Parameter    | Type                                   | Required | Description                                |
+| ------------ | -------------------------------------- | -------- | ------------------------------------------ |
+| `start_date` | `string` (ISO 8601 UTC)                | ✅       | Range start (inclusive)                    |
+| `end_date`   | `string` (ISO 8601 UTC)                | ✅       | Range end (inclusive)                      |
+| `group_by`   | `"day" \| "week" \| "month" \| "year"` | —        | Time-series granularity (default: `"day"`) |
 
 **Returns:**
+
 ```json
 {
-  "period": { "start": "...", "end": "..." },
-  "total_spending": 342.50,
-  "transaction_count": 18,
-  "by_category": [
-    { "category": "食物", "total": 120.00, "count": 8, "percentage": 35.04 }
-  ],
-  "by_period": [
-    { "period": "2025-01-15", "total": 45.00, "count": 3 }
-  ]
+    "period": { "start": "...", "end": "..." },
+    "total_spending": 342.5,
+    "transaction_count": 18,
+    "by_category": [
+        { "category": "食物", "total": 120.0, "count": 8, "percentage": 35.04 }
+    ],
+    "by_period": [{ "period": "2025-01-15", "total": 45.0, "count": 3 }]
 }
 ```
 
@@ -270,25 +332,25 @@ Generates an aggregated financial report for a date range.
 
 ```typescript
 interface Expense {
-    id: string               // UUID v4
-    amount: number           // MYR
-    category: string         // One of EXPENSE_CATEGORIES
+    id: string // UUID v4
+    amount: number // MYR
+    category: string // One of EXPENSE_CATEGORIES
     sub_category: string | null
     description: string
     remark: string | null
-    date: string             // ISO 8601 UTC
-    created_at: string       // ISO 8601 UTC
-    updated_at: string       // ISO 8601 UTC
+    date: string // ISO 8601 UTC
+    created_at: string // ISO 8601 UTC
+    updated_at: string // ISO 8601 UTC
 }
 
 interface ExpenseAttachment {
-    id: string               // UUID v4
-    expense_id: string       // FK → expenses.id
-    file_path: string        // Relative in DB; absolute in get_expense responses
+    id: string // UUID v4
+    expense_id: string // FK → expenses.id
+    file_path: string // Relative in DB; absolute in get_expense responses
     original_filename: string
     mime_type: string
     remark: string | null
-    created_at: string       // ISO 8601 UTC
+    created_at: string // ISO 8601 UTC
 }
 
 interface ExpenseWithAttachments extends Expense {
@@ -305,16 +367,18 @@ Use this flowchart to decide which tool to call:
 ```
 User mentions a purchase / expense
     │
-    ├─ Category unclear?
+    ├─ Single item + category unclear?
     │       └─ call list_categories first, then add_expense
     │
-    └─ Category known → add_expense
-            │
-            └─ User also sends a receipt / file?
-                    └─ download the file to disk → add_attachment
+    ├─ Single item + category known → add_expense
+    │       └─ User also sends a receipt / file?
+    │               └─ download the file to disk → add_attachment
+    │
+    └─ Multiple items at once (e.g. "I bought X, Y, Z today")
+            └─ bulk_add_expenses (one call, one transaction, saves tokens)
 
 User asks "how much did I spend?" / "show my summary"
-    └─ expense_summary (choose group_by based on time range)
+    └─ expense_summary (choose group_by based on time range asked)
 
 User asks to see a specific record
     └─ get_expense (returns attachments with absolute file_path)
@@ -323,21 +387,25 @@ User asks to list / search records
     └─ list_expenses (apply filters + pagination as needed)
 
 User wants to fix a mistake
-    └─ update_expense (partial — only changed fields)
+    └─ update_expense (partial — only pass the changed fields)
 
 User wants to delete
-    ├─ Remove the whole expense → delete_expense (also removes files)
-    └─ Remove just a file → remove_attachment
+    ├─ Single expense → delete_expense (also removes its files)
+    ├─ Multiple expenses → bulk_delete_expenses (pass all IDs at once)
+    └─ Just one file from an expense → remove_attachment
 
 User asks to send / view an attached file
     └─ get_expense → read file_path from attachments → sendDocument(file_path)
 ```
 
 **Important rules for agents:**
+
 - Never invent a category name — always use `list_categories` when in doubt.
 - `date` is always ISO 8601 UTC. Convert "today", "yesterday", "last Monday" to UTC before passing.
+- Prefer `bulk_add_expenses` over looping `add_expense` — fewer round-trips, atomic, lower token cost.
+- Prefer `bulk_delete_expenses` over looping `delete_expense` for the same reasons.
 - `get_expense` returns absolute `file_path` values — use them directly with `fs.readFile` or Telegram's `sendDocument`.
-- `delete_expense` deletes files too — confirm with the user before calling.
+- `delete_expense` and `bulk_delete_expenses` delete files too — confirm with the user before calling.
 
 ---
 
@@ -349,12 +417,12 @@ User asks to send / view an attached file
 npm test
 ```
 
-Runs 51 tests across two suites using Vitest with an in-memory SQLite database — no files are written to your data directory:
+Runs 64 tests across two suites using Vitest with an in-memory SQLite database — no files are written to your data directory:
 
-| Suite | Coverage |
-|---|---|
-| `tests/queries.test.ts` | `insertExpense`, `getExpenseById`, `listExpenses`, `updateExpense`, `deleteExpense`, attachment CRUD, `getExpenseSummary` (all `group_by` modes) |
-| `tests/attachment.test.ts` | `mimeToExt` (all MIME categories), `saveAttachment` (copy, extension inference, error handling), `deleteAttachmentFile` (existing file, missing file) |
+| Suite                      | Coverage                                                                                                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/queries.test.ts`    | `insertExpense`, `getExpenseById`, `listExpenses`, `updateExpense`, `deleteExpense`, `bulkInsertExpenses`, `bulkDeleteExpenses`, attachment CRUD, `getExpenseSummary` (all `group_by` modes) |
+| `tests/attachment.test.ts` | `mimeToExt` (all MIME categories), `saveAttachment` (copy, extension inference, error handling), `deleteAttachmentFile` (existing file, missing file)                                        |
 
 Watch mode for development:
 
@@ -377,8 +445,8 @@ This opens the MCP Inspector in your browser. You can call any tool, inspect the
 
 ## Environment Variables
 
-| Variable | Default | Purpose |
-|---|---|---|
+| Variable           | Default               | Purpose                                                                   |
+| ------------------ | --------------------- | ------------------------------------------------------------------------- |
 | `EXPENSE_DATA_DIR` | `<project root>/data` | Redirect DB + attachments to a persistent volume outside the project tree |
 
 ---
