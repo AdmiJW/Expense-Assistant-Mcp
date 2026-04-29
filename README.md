@@ -85,6 +85,7 @@ node dist/index.js
 | Environment Variable | Default               | Description                                                                                      |
 | -------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
 | `EXPENSE_DATA_DIR`   | `<project root>/data` | Absolute path for SQLite DB and attachment files. Set this to a persistent volume in production. |
+| `EXPENSE_TIMEZONE`   | `Asia/Kuala_Lumpur`   | IANA timezone name. Controls display formatting of all returned timestamps and the period grouping in `expense_summary`. |
 
 The data directory is created automatically on first run. It contains:
 
@@ -135,11 +136,11 @@ Records a new expense.
 | `amount`       | `number`                | ✅           | Positive value in MYR                     |
 | `category`     | `string`                | ✅           | Must match a value from `list_categories` |
 | `description`  | `string`                | ✅           | Short description of the expense          |
-| `date`         | `string` (ISO 8601 UTC) | —            | Defaults to now (Malaysia UTC+8)          |
+| `date`         | `string` (ISO 8601 with offset) | —            | e.g. `"2026-04-29T14:30:00+08:00"`. UTC (`Z`) also accepted. Defaults to now. |
 | `sub_category` | `string`                | ✅ if `其他` | Required when category is `其他`          |
 | `remark`       | `string`                | —            | Additional notes                          |
 
-**Returns:** Full `Expense` object including generated `id`.
+**Returns:** Full `Expense` object including generated `id`. All timestamps are returned in local time (`EXPENSE_TIMEZONE`).
 
 **Example:**
 
@@ -148,7 +149,7 @@ Records a new expense.
     "amount": 12.5,
     "category": "食物",
     "description": "Char kway teow",
-    "date": "2025-01-15T12:30:00.000Z"
+    "date": "2026-04-29T12:30:00+08:00"
 }
 ```
 
@@ -198,8 +199,8 @@ Queries the expense ledger with optional filters and pagination.
 
 | Parameter    | Type                    | Required | Description                                |
 | ------------ | ----------------------- | -------- | ------------------------------------------ |
-| `start_date` | `string` (ISO 8601 UTC) | —        | Filter from this date (inclusive)          |
-| `end_date`   | `string` (ISO 8601 UTC) | —        | Filter until this date (inclusive)         |
+| `start_date` | `string` (ISO 8601 with offset) | —        | e.g. `"2026-04-29T00:00:00+08:00"`. UTC (`Z`) also accepted. Inclusive. |
+| `end_date`   | `string` (ISO 8601 with offset) | —        | e.g. `"2026-04-29T23:59:59+08:00"`. UTC (`Z`) also accepted. Inclusive. |
 | `category`   | `string`                | —        | Filter by exact category name              |
 | `limit`      | `number`                | —        | Max records per page (default 20, max 100) |
 | `offset`     | `number`                | —        | Skip this many records (default 0)         |
@@ -229,7 +230,7 @@ Partially updates an existing expense. Only pass the fields you want to change.
 | `amount`       | `number`                | —        | New amount           |
 | `category`     | `string`                | —        | New category         |
 | `description`  | `string`                | —        | New description      |
-| `date`         | `string` (ISO 8601 UTC) | —        | New date             |
+| `date`         | `string` (ISO 8601 with offset) | —        | e.g. `"2026-04-29T14:30:00+08:00"`. UTC (`Z`) also accepted. |
 | `sub_category` | `string \| null`        | —        | Pass `null` to clear |
 | `remark`       | `string \| null`        | —        | Pass `null` to clear |
 
@@ -308,8 +309,8 @@ Generates an aggregated financial report for a date range.
 
 | Parameter    | Type                                   | Required | Description                                |
 | ------------ | -------------------------------------- | -------- | ------------------------------------------ |
-| `start_date` | `string` (ISO 8601 UTC)                | ✅       | Range start (inclusive)                    |
-| `end_date`   | `string` (ISO 8601 UTC)                | ✅       | Range end (inclusive)                      |
+| `start_date` | `string` (ISO 8601 with offset)        | ✅       | e.g. `"2026-04-01T00:00:00+08:00"`. UTC (`Z`) also accepted. Inclusive. |
+| `end_date`   | `string` (ISO 8601 with offset)        | ✅       | e.g. `"2026-04-30T23:59:59+08:00"`. UTC (`Z`) also accepted. Inclusive. |
 | `group_by`   | `"day" \| "week" \| "month" \| "year"` | —        | Time-series granularity (default: `"day"`) |
 
 **Returns:**
@@ -448,6 +449,7 @@ This opens the MCP Inspector in your browser. You can call any tool, inspect the
 | Variable           | Default               | Purpose                                                                   |
 | ------------------ | --------------------- | ------------------------------------------------------------------------- |
 | `EXPENSE_DATA_DIR` | `<project root>/data` | Redirect DB + attachments to a persistent volume outside the project tree |
+| `EXPENSE_TIMEZONE` | `Asia/Kuala_Lumpur`   | IANA timezone name for display formatting and `expense_summary` grouping  |
 
 ---
 
@@ -455,6 +457,6 @@ This opens the MCP Inspector in your browser. You can call any tool, inspect the
 
 - **Adding a category:** Edit the `EXPENSE_CATEGORIES` tuple in `src/types.ts`. The change propagates automatically to all Zod schemas and `list_categories`.
 - **Attachment storage:** Files are copied (not moved) from the source path. The MCP owns its copy; the caller's original is untouched.
-- **Date convention:** All `date` fields default to `new Date().toISOString()` (UTC). The Malaysia UTC+8 convention means agents should add 8 hours when converting local time to UTC, or pass the user's local time as-is if the host already handles timezone conversion.
+- **Date convention (Store UTC, Display Local):** The DB stores all timestamps in UTC. Agents pass dates with a timezone offset (e.g. `2026-04-29T14:30:00+08:00`) — the server normalises them to UTC before writing. On the way out, all timestamps are formatted to local time using `EXPENSE_TIMEZONE`. Agents receive human-readable local strings; no mental UTC arithmetic required.
 - **SQLite FK cascade:** `ON DELETE CASCADE` on `expense_attachments` means deleting an expense automatically removes its DB rows — but the filesystem cleanup (`deleteAttachmentFile`) is handled explicitly in `delete-expense.ts` because SQLite cascade only handles rows, not files.
 - **`EXPENSE_DATA_DIR` in tests:** Attachment tests override this env var to a temp directory, so tests never touch `data/`. Always restore it in `afterEach`.

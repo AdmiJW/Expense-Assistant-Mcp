@@ -23,7 +23,7 @@ export const AddExpenseSchema = z.object({
     amount: z.number().positive(),
     category: CategorySchema,
     description: z.string().min(1),
-    date: z.string().datetime().optional(),
+    date: z.string().datetime({ offset: true }).optional(),
     sub_category: z.string().optional(),
     remark: z.string().optional(),
 })
@@ -33,8 +33,8 @@ export const GetExpenseSchema = z.object({
 })
 
 export const ListExpensesSchema = z.object({
-    start_date: z.string().datetime().optional(),
-    end_date: z.string().datetime().optional(),
+    start_date: z.string().datetime({ offset: true }).optional(),
+    end_date: z.string().datetime({ offset: true }).optional(),
     category: CategorySchema.optional(),
     limit: z.number().int().min(1).max(100).default(20),
     offset: z.number().int().min(0).default(0),
@@ -47,7 +47,7 @@ export const UpdateExpenseSchema = z.object({
     sub_category: z.string().nullable().optional(),
     description: z.string().min(1).optional(),
     remark: z.string().nullable().optional(),
-    date: z.string().datetime().optional(),
+    date: z.string().datetime({ offset: true }).optional(),
 })
 
 export const DeleteExpenseSchema = z.object({
@@ -75,8 +75,8 @@ export const RemoveAttachmentSchema = z.object({
 })
 
 export const ExpenseSummarySchema = z.object({
-    start_date: z.string().datetime(),
-    end_date: z.string().datetime(),
+    start_date: z.string().datetime({ offset: true }),
+    end_date: z.string().datetime({ offset: true }),
     group_by: z.enum(["day", "week", "month", "year"]).default("day"),
 })
 

@@ -285,6 +285,7 @@ export function getExpenseSummary(
     startDate: string,
     endDate: string,
     groupBy: "day" | "week" | "month" | "year",
+    tzOffsetStr: string = "+0 minutes",
 ): {
     period: { start: string; end: string }
     total_spending: number
@@ -333,22 +334,22 @@ export function getExpenseSummary(
         percentage: Math.round((r.total / totalAll) * 10000) / 100,
     }))
 
-    // strftime('%Y-%W') groups by SQLite calendar week number (Sunday-anchored),
-    // not ISO-8601 Monday-anchored weeks — close enough for trend analysis.
+    // datetime(date, ?) shifts the UTC timestamp to local time before grouping,
+    // so a 2026-04-30 00:30 MYT expense isn't bucketed under 2026-04-29 (UTC).
+    // strftime('%Y-%W') uses SQLite calendar week (Sunday-anchored), not ISO-8601.
     let periodExpr: string
     switch (groupBy) {
         case "year":
-            periodExpr = "substr(date, 1, 4)"
+            periodExpr = "substr(datetime(date, ?), 1, 4)"
             break
         case "month":
-            periodExpr = "substr(date, 1, 7)"
+            periodExpr = "substr(datetime(date, ?), 1, 7)"
             break
         case "week":
-            // ISO week: group by the Monday of each week
-            periodExpr = "strftime('%Y-%W', date)"
+            periodExpr = "strftime('%Y-%W', datetime(date, ?))"
             break
         default:
-            periodExpr = "substr(date, 1, 10)"
+            periodExpr = "substr(datetime(date, ?), 1, 10)"
     }
 
     const byPeriod = db
@@ -357,7 +358,7 @@ export function getExpenseSummary(
        FROM expenses ${baseWhere}
        GROUP BY period ORDER BY period`,
         )
-        .all(...baseParams) as {
+        .all(tzOffsetStr, ...baseParams) as {
         period: string
         total: number
         count: number
