@@ -9,12 +9,13 @@ A TypeScript MCP (Model Context Protocol) server for personal expense tracking. 
 1. [Architecture](#architecture)
 2. [Quick Start](#quick-start)
 3. [Configuration](#configuration)
-4. [Tool Reference](#tool-reference)
-5. [Data Models](#data-models)
-6. [For AI Agents — Decision Guide](#for-ai-agents--decision-guide)
-7. [Testing](#testing)
-8. [Environment Variables](#environment-variables)
-9. [Development Notes](#development-notes)
+4. [Agent Artifacts](#agent-artifacts)
+5. [Tool Reference](#tool-reference)
+6. [Data Models](#data-models)
+7. [For AI Agents — Decision Guide](#for-ai-agents--decision-guide)
+8. [Testing](#testing)
+9. [Environment Variables](#environment-variables)
+10. [Development Notes](#development-notes)
 
 ---
 
@@ -94,6 +95,20 @@ data/
   expenses.db          # SQLite database
   attachments/         # Copied attachment files (uuid-named)
 ```
+
+---
+
+## Agent Artifacts
+
+This repository includes prompt and context artifacts used by Hermes and future AI-assisted coding sessions:
+
+| File                 | Purpose                                                                 |
+| -------------------- | ----------------------------------------------------------------------- |
+| `artifacts/SOUL.md`  | Hermes persona, high-level behavior, privacy boundaries, and continuity. |
+| `artifacts/SKILL.md` | Hermes-facing MCP operation guide; the source of truth for tool usage.   |
+| `AGENT.md`           | Project context for future AI coding agents working in this repository.  |
+
+Keep detailed tool behavior in `artifacts/SKILL.md`, not `artifacts/SOUL.md`, to avoid duplicated prompt tokens. Public tool changes should update this README, `artifacts/SKILL.md`, and `AGENT.md`; update `artifacts/SOUL.md` only when persona, boundaries, or the skill-reference contract changes.
 
 ---
 
@@ -441,7 +456,7 @@ User asks to send / view an attached file
 **Important rules for agents:**
 
 - Never invent a category name — always use `list_categories` when in doubt.
-- `date` is always ISO 8601 UTC. Convert "today", "yesterday", "last Monday" to UTC before passing.
+- Pass dates as ISO 8601 with timezone offset, preferably Malaysia time (`+08:00`) for user-facing relative dates. UTC (`Z`) is also accepted.
 - Prefer `bulk_add_expenses` over looping `add_expense` — fewer round-trips, atomic, lower token cost.
 - Prefer `bulk_delete_expenses` over looping `delete_expense` for the same reasons.
 - `get_expense` returns absolute `file_path` values — use them directly with `fs.readFile` or Telegram's `sendDocument`.
