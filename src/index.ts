@@ -13,6 +13,7 @@ import { register as registerExpenseSummary } from './tools/expense-summary.js';
 import { register as registerBulkAddExpenses } from './tools/bulk-add-expenses.js';
 import { register as registerBulkDeleteExpenses } from './tools/bulk-delete-expenses.js';
 import { register as registerListCategories } from './tools/list-categories.js';
+import { register as registerCalculate } from './tools/calculate.js';
 
 const db = initDatabase();
 
@@ -33,6 +34,7 @@ registerExpenseSummary(server, db);
 registerBulkAddExpenses(server, db);
 registerBulkDeleteExpenses(server, db);
 registerListCategories(server);
+registerCalculate(server);
 
 // Connect via stdio
 const transport = new StdioServerTransport();

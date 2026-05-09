@@ -80,6 +80,10 @@ export const ExpenseSummarySchema = z.object({
     group_by: z.enum(["day", "week", "month", "year"]).default("day"),
 })
 
+export const CalculateSchema = z.object({
+    expression: z.string().min(1).max(500),
+})
+
 // --- TypeScript interfaces ---
 
 export interface Expense {

@@ -82,9 +82,9 @@ node dist/index.js
 
 ## Configuration
 
-| Environment Variable | Default               | Description                                                                                      |
-| -------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
-| `EXPENSE_DATA_DIR`   | `<project root>/data` | Absolute path for SQLite DB and attachment files. Set this to a persistent volume in production. |
+| Environment Variable | Default               | Description                                                                                                              |
+| -------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `EXPENSE_DATA_DIR`   | `<project root>/data` | Absolute path for SQLite DB and attachment files. Set this to a persistent volume in production.                         |
 | `EXPENSE_TIMEZONE`   | `Asia/Kuala_Lumpur`   | IANA timezone name. Controls display formatting of all returned timestamps and the period grouping in `expense_summary`. |
 
 The data directory is created automatically on first run. It contains:
@@ -127,18 +127,52 @@ Returns the canonical list of valid category values. **Call this before `add_exp
 
 ---
 
+### `calculate`
+
+Evaluates a clean arithmetic expression in one deterministic tool call. **Use this whenever arithmetic is needed before recording, splitting, reimbursing, or summarising expenses** instead of doing the math in the LLM.
+
+The caller must extract the arithmetic expression from natural language first. Raw messages such as `午餐 11.5加2.3加9 消费税6` are not accepted directly; convert them to an expression such as `(11.5+2.3+9)*1.06`.
+
+| Parameter    | Type     | Required | Description                                                                                                            |
+| ------------ | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `expression` | `string` | true     | Arithmetic expression up to 500 chars. Supports numbers, whitespace, `+`, `-`, `*`, `/`, parentheses, and unary minus. |
+
+Percent shorthand is not supported. Convert tax or service-charge percentages into multiplication, e.g. 6% tax becomes `*1.06`.
+
+**Returns:** raw decimal result plus a money-safe result rounded upward to 2 decimal places (`ceil_2dp`).
+
+**Example:**
+
+```json
+{
+    "expression": "(11.5+2.3+9)*1.06"
+}
+```
+
+```json
+{
+    "expression": "(11.5+2.3+9)*1.06",
+    "raw_result": "24.168",
+    "rounded_result": 24.17,
+    "rounded_result_text": "24.17",
+    "rounding": "ceil_2dp"
+}
+```
+
+---
+
 ### `add_expense`
 
 Records a new expense.
 
-| Parameter      | Type                    | Required     | Description                               |
-| -------------- | ----------------------- | ------------ | ----------------------------------------- |
-| `amount`       | `number`                | ✅           | Positive value in MYR                     |
-| `category`     | `string`                | ✅           | Must match a value from `list_categories` |
-| `description`  | `string`                | ✅           | Short description of the expense          |
+| Parameter      | Type                            | Required     | Description                                                                   |
+| -------------- | ------------------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `amount`       | `number`                        | ✅           | Positive value in MYR                                                         |
+| `category`     | `string`                        | ✅           | Must match a value from `list_categories`                                     |
+| `description`  | `string`                        | ✅           | Short description of the expense                                              |
 | `date`         | `string` (ISO 8601 with offset) | —            | e.g. `"2026-04-29T14:30:00+08:00"`. UTC (`Z`) also accepted. Defaults to now. |
-| `sub_category` | `string`                | ✅ if `其他` | Required when category is `其他`          |
-| `remark`       | `string`                | —            | Additional notes                          |
+| `sub_category` | `string`                        | ✅ if `其他` | Required when category is `其他`                                              |
+| `remark`       | `string`                        | —            | Additional notes                                                              |
 
 **Returns:** Full `Expense` object including generated `id`. All timestamps are returned in local time (`EXPENSE_TIMEZONE`).
 
@@ -197,13 +231,13 @@ Retrieves a single expense by its UUID, including all attached files.
 
 Queries the expense ledger with optional filters and pagination.
 
-| Parameter    | Type                    | Required | Description                                |
-| ------------ | ----------------------- | -------- | ------------------------------------------ |
+| Parameter    | Type                            | Required | Description                                                             |
+| ------------ | ------------------------------- | -------- | ----------------------------------------------------------------------- |
 | `start_date` | `string` (ISO 8601 with offset) | —        | e.g. `"2026-04-29T00:00:00+08:00"`. UTC (`Z`) also accepted. Inclusive. |
 | `end_date`   | `string` (ISO 8601 with offset) | —        | e.g. `"2026-04-29T23:59:59+08:00"`. UTC (`Z`) also accepted. Inclusive. |
-| `category`   | `string`                | —        | Filter by exact category name              |
-| `limit`      | `number`                | —        | Max records per page (default 20, max 100) |
-| `offset`     | `number`                | —        | Skip this many records (default 0)         |
+| `category`   | `string`                        | —        | Filter by exact category name                                           |
+| `limit`      | `number`                        | —        | Max records per page (default 20, max 100)                              |
+| `offset`     | `number`                        | —        | Skip this many records (default 0)                                      |
 
 **Returns:**
 
@@ -224,15 +258,15 @@ Queries the expense ledger with optional filters and pagination.
 
 Partially updates an existing expense. Only pass the fields you want to change.
 
-| Parameter      | Type                    | Required | Description          |
-| -------------- | ----------------------- | -------- | -------------------- |
-| `id`           | `string`                | ✅       | UUID of the expense  |
-| `amount`       | `number`                | —        | New amount           |
-| `category`     | `string`                | —        | New category         |
-| `description`  | `string`                | —        | New description      |
+| Parameter      | Type                            | Required | Description                                                  |
+| -------------- | ------------------------------- | -------- | ------------------------------------------------------------ |
+| `id`           | `string`                        | ✅       | UUID of the expense                                          |
+| `amount`       | `number`                        | —        | New amount                                                   |
+| `category`     | `string`                        | —        | New category                                                 |
+| `description`  | `string`                        | —        | New description                                              |
 | `date`         | `string` (ISO 8601 with offset) | —        | e.g. `"2026-04-29T14:30:00+08:00"`. UTC (`Z`) also accepted. |
-| `sub_category` | `string \| null`        | —        | Pass `null` to clear |
-| `remark`       | `string \| null`        | —        | Pass `null` to clear |
+| `sub_category` | `string \| null`                | —        | Pass `null` to clear                                         |
+| `remark`       | `string \| null`                | —        | Pass `null` to clear                                         |
 
 **Returns:** Updated `Expense` object, or an error if the id does not exist.
 
@@ -307,11 +341,11 @@ Does not affect the parent expense or other attachments. **Returns error** if th
 
 Generates an aggregated financial report for a date range.
 
-| Parameter    | Type                                   | Required | Description                                |
-| ------------ | -------------------------------------- | -------- | ------------------------------------------ |
+| Parameter    | Type                                   | Required | Description                                                             |
+| ------------ | -------------------------------------- | -------- | ----------------------------------------------------------------------- |
 | `start_date` | `string` (ISO 8601 with offset)        | ✅       | e.g. `"2026-04-01T00:00:00+08:00"`. UTC (`Z`) also accepted. Inclusive. |
 | `end_date`   | `string` (ISO 8601 with offset)        | ✅       | e.g. `"2026-04-30T23:59:59+08:00"`. UTC (`Z`) also accepted. Inclusive. |
-| `group_by`   | `"day" \| "week" \| "month" \| "year"` | —        | Time-series granularity (default: `"day"`) |
+| `group_by`   | `"day" \| "week" \| "month" \| "year"` | —        | Time-series granularity (default: `"day"`)                              |
 
 **Returns:**
 
@@ -366,6 +400,11 @@ interface ExpenseWithAttachments extends Expense {
 Use this flowchart to decide which tool to call:
 
 ```
+User message requires arithmetic (tax, split bill, totals, reimbursement)
+    -> extract one full expression and call calculate
+       Example: "午餐 11.5加2.3加9 消费税6" -> calculate("(11.5+2.3+9)*1.06")
+       Use rounded_result or rounded_result_text for the expense amount.
+
 User mentions a purchase / expense
     │
     ├─ Single item + category unclear?
@@ -408,6 +447,8 @@ User asks to send / view an attached file
 - `get_expense` returns absolute `file_path` values — use them directly with `fs.readFile` or Telegram's `sendDocument`.
 - `delete_expense` and `bulk_delete_expenses` delete files too — confirm with the user before calling.
 
+**Arithmetic rule:** Use `calculate` for arithmetic instead of mental math. Pass the full expression in one call, e.g. `(11.5+2.3+9)*1.06`, then use its upward-rounded 2dp result.
+
 ---
 
 ## Testing
@@ -418,12 +459,13 @@ User asks to send / view an attached file
 npm test
 ```
 
-Runs 64 tests across two suites using Vitest with an in-memory SQLite database — no files are written to your data directory:
+Runs 75 tests across three suites using Vitest with an in-memory SQLite database — no files are written to your data directory:
 
 | Suite                      | Coverage                                                                                                                                                                                     |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/queries.test.ts`    | `insertExpense`, `getExpenseById`, `listExpenses`, `updateExpense`, `deleteExpense`, `bulkInsertExpenses`, `bulkDeleteExpenses`, attachment CRUD, `getExpenseSummary` (all `group_by` modes) |
 | `tests/attachment.test.ts` | `mimeToExt` (all MIME categories), `saveAttachment` (copy, extension inference, error handling), `deleteAttachmentFile` (existing file, missing file)                                        |
+| `tests/calculate.test.ts`  | `calculateExpression` parser/evaluator, operator precedence, unary minus, ceil-to-cent rounding, malformed expressions, division by zero                                                     |
 
 Watch mode for development:
 
